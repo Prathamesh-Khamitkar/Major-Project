@@ -1,0 +1,326 @@
+import sys
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QFileDialog, QLabel, QComboBox, QSlider, QHBoxLayout, QProgressBar, QListWidget
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtCore import QUrl, QTimer, Qt
+import pyqtgraph as pg
+from pydub import AudioSegment
+import numpy as np
+import os
+import tempfile
+
+class AudioEnhancerGUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        # GUI settings
+        self.setWindowTitle("Futuristic Music Player")
+        self.setGeometry(100, 100, 900, 700)
+        self.setStyleSheet("background-color: #2C2C34; color: white;")
+
+        # Layout
+        main_layout = QVBoxLayout()
+
+        # Song controls layout with futuristic buttons and icons
+        control_layout = QHBoxLayout()
+
+        # Load Songs Button (for Playlist)
+        self.load_button = QPushButton("\u21E9")  # Down arrow for load
+        self.load_button.setStyleSheet("""
+            font-size: 28px; padding: 10px; background-color: #00C9FF; color: white; 
+            border-radius: 10px; hover: background-color: #005f73;
+            """)
+        self.load_button.clicked.connect(self.load_songs)
+
+        # Play Button (Right arrow for play)
+        self.play_button = QPushButton("\u25B6")  # Unicode right arrow for play
+        self.play_button.setStyleSheet("""
+            font-size: 28px; padding: 10px; background-color: #00FF9F; color: white; 
+            border-radius: 10px; hover: background-color: #005f73;
+            """)
+        self.play_button.clicked.connect(self.play_song)  # Connect play button
+
+        # Pause Button (Double bar for pause)
+        self.pause_button = QPushButton("\u23F8")  # Unicode for pause button
+        self.pause_button.setStyleSheet("""
+            font-size: 28px; padding: 10px; background-color: #F15BB5; color: white; 
+            border-radius: 10px; hover: background-color: #9b0a5b;
+            """)
+        self.pause_button.clicked.connect(self.pause_song)  # Connect pause button
+
+        # Previous Button (Left arrow for previous)
+        self.prev_button = QPushButton("\u23EA")  # Unicode for previous track
+        self.prev_button.setStyleSheet("""
+            font-size: 28px; padding: 10px; background-color: #FFD300; color: white; 
+            border-radius: 10px; hover: background-color: #9b8b00;
+            """)
+        self.prev_button.clicked.connect(self.previous_song)  # Connect previous button
+
+        # Next Button (Right arrow for next)
+        self.next_button = QPushButton("\u23E9")  # Unicode for next track
+        self.next_button.setStyleSheet("""
+            font-size: 28px; padding: 10px; background-color: #FF6F61; color: white; 
+            border-radius: 10px; hover: background-color: #7f2f2a;
+            """)
+        self.next_button.clicked.connect(self.next_song)  # Connect next button
+
+        # Add buttons to control layout
+        control_layout.addWidget(self.load_button)
+        control_layout.addWidget(self.prev_button)
+        control_layout.addWidget(self.play_button)
+        control_layout.addWidget(self.pause_button)
+        control_layout.addWidget(self.next_button)
+
+        # Playlist View (QListWidget for displaying loaded songs)
+        self.playlist = QListWidget()
+        self.playlist.setStyleSheet("""
+            font-size: 14px; background-color: #393945; border-radius: 10px; color: white;
+            """)
+        self.playlist.itemDoubleClicked.connect(self.play_selected_song)  # Play on double-click
+
+        # Age Group Selection
+        self.age_label = QLabel("Select Age Group:")
+        self.age_label.setStyleSheet("font-size: 16px; padding: 5px; color: #00C9FF;")
+        self.age_combo = QComboBox()
+        self.age_combo.addItems(["10-20", "20-40", "40-60"])
+        self.age_combo.setStyleSheet("font-size: 14px; padding: 5px; background-color: #e0e0e0; border-radius: 5px;")
+        self.age_combo.currentIndexChanged.connect(self.update_audio_settings_based_on_age_group)
+
+        # Add age group controls
+        age_layout = QHBoxLayout()
+        age_layout.addWidget(self.age_label)
+        age_layout.addWidget(self.age_combo)
+
+        # Bass Slider
+        self.bass_label = QLabel("Bass:")
+        self.bass_label.setStyleSheet("font-size: 16px; color: #FFD300;")
+        self.bass_slider = QSlider(Qt.Horizontal)
+        self.bass_slider.setMinimum(-10)
+        self.bass_slider.setMaximum(10)
+        self.bass_slider.setValue(0)
+        self.bass_slider.setStyleSheet("""
+            padding: 10px; color: white; border-radius: 5px; background-color: #3a3a3a;
+            """)
+        self.bass_slider.valueChanged.connect(self.update_bass_and_treble)
+
+        # Treble Slider
+        self.treble_label = QLabel("Treble:")
+        self.treble_label.setStyleSheet("font-size: 16px; color: #FFD300;")
+        self.treble_slider = QSlider(Qt.Horizontal)
+        self.treble_slider.setMinimum(-10)
+        self.treble_slider.setMaximum(10)
+        self.treble_slider.setValue(0)
+        self.treble_slider.setStyleSheet("""
+            padding: 10px; color: white; border-radius: 5px; background-color: #3a3a3a;
+            """)
+        self.treble_slider.valueChanged.connect(self.update_bass_and_treble)
+
+        # Progress Bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setValue(0)
+        self.progress_bar.setStyleSheet("""
+            padding: 10px; background-color: #e0e0e0; border-radius: 5px; color: #FFD300;
+            """)
+
+        # Layout arrangement
+        main_layout.addLayout(control_layout)
+        main_layout.addWidget(self.playlist)  # Playlist widget
+        main_layout.addLayout(age_layout)
+        main_layout.addWidget(self.bass_label)
+        main_layout.addWidget(self.bass_slider)
+        main_layout.addWidget(self.treble_label)
+        main_layout.addWidget(self.treble_slider)
+        main_layout.addWidget(self.progress_bar)
+
+        # Visualization Widget
+        self.graphWidget = pg.PlotWidget()
+        self.graphWidget.setBackground('w')
+        self.graphWidget.setLabel('left', 'Amplitude', color='00FF9F', size=20)
+        self.graphWidget.setLabel('bottom', 'Time', color='00FF9F', size=20)
+        main_layout.addWidget(self.graphWidget)
+
+        # Volume Slider
+        self.volume_label = QLabel("Volume:")
+        self.volume_label.setStyleSheet("font-size: 16px; color: #FFD300;")
+        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider.setMinimum(0)
+        self.volume_slider.setMaximum(100)
+        self.volume_slider.setValue(80)
+        self.volume_slider.setStyleSheet("""
+            padding: 10px; color: white; border-radius: 5px; background-color: #3a3a3a;
+            """)
+        self.volume_slider.valueChanged.connect(self.change_volume)
+        main_layout.addWidget(self.volume_label)
+        main_layout.addWidget(self.volume_slider)
+
+        # Set layout to central widget
+        container = QWidget()
+        container.setLayout(main_layout)
+        self.setCentralWidget(container)
+
+        # Media Player
+        self.player = QMediaPlayer()
+        self.player.positionChanged.connect(self.update_progress)
+        self.player.stateChanged.connect(self.handle_state_change)
+
+        self.current_file_paths = []
+        self.current_index = -1
+        self.processed_audio = None
+        self.raw_data = None
+        self.timer = QTimer()
+        self.paused_position = 0
+        self.temp_files = []  # Keep track of temporary files
+
+    def load_songs(self):
+        options = QFileDialog.Options()
+        file_paths, _ = QFileDialog.getOpenFileNames(self, "Open MP3 Files", "", "MP3 Files (*.mp3)", options=options)
+        if file_paths:
+            self.current_file_paths = file_paths
+            self.playlist.clear()  # Clear existing items
+            for path in file_paths:
+                self.playlist.addItem(os.path.basename(path))  # Display file name in the playlist
+
+            self.current_index = 0  # Reset index to the first song
+            self.process_and_load_song(self.current_index)
+
+    def play_selected_song(self):
+        selected_index = self.playlist.currentRow()
+        if selected_index >= 0 and selected_index < len(self.current_file_paths):
+            self.current_index = selected_index
+            self.process_and_load_song(self.current_index)
+            self.play_song()
+
+    def process_and_load_song(self, index):
+        self.current_file_path = self.current_file_paths[index]
+        self.processed_audio = self.process_audio(self.current_file_path, self.age_combo.currentText())
+        self.raw_data = np.array(self.processed_audio.get_array_of_samples())
+        self.paused_position = 0  # Reset the paused position on loading a new song
+
+        # Use a unique temporary file to save the processed audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+            temp_path = temp_file.name
+            self.temp_files.append(temp_path)  # Track temporary file for cleanup
+            self.processed_audio.export(temp_path, format="mp3")
+            self.player.setMedia(QMediaContent(QUrl.fromLocalFile(temp_path)))
+            self.player.setPosition(self.paused_position)
+
+    def play_song(self):
+        if self.player.state() == QMediaPlayer.PausedState or self.player.state() == QMediaPlayer.StoppedState:
+            self.player.play()
+
+        # Start the visualization update loop
+        self.timer.timeout.connect(self.update_visualization)
+        self.timer.start(100)  # Update every 100 ms
+
+    def pause_song(self):
+        if self.player.state() == QMediaPlayer.PlayingState:
+            self.player.pause()
+            self.timer.stop()
+            self.paused_position = self.player.position()  # Save the current position when paused
+
+    def next_song(self):
+        if self.current_index < len(self.current_file_paths) - 1:
+            self.current_index += 1
+            self.process_and_load_song(self.current_index)
+            self.play_song()
+
+    def previous_song(self):
+        if self.current_index > 0:
+            self.current_index -= 1
+            self.process_and_load_song(self.current_index)
+            self.play_song()
+
+    def change_volume(self):
+        volume = self.volume_slider.value()
+        self.player.setVolume(volume)
+
+    def update_audio_settings_based_on_age_group(self):
+        age_group = self.age_combo.currentText()
+
+        # Dynamic settings based on age group
+        if age_group == "10-20":
+            self.volume_slider.setValue(60)  # Lower volume for safe listening
+            self.bass_slider.setValue(7)  # More bass for younger listeners
+            self.treble_slider.setValue(5)  # Moderate treble
+
+        elif age_group == "20-40":
+            self.volume_slider.setValue(70)  # Balanced volume
+            self.bass_slider.setValue(5)  # Balanced bass
+            self.treble_slider.setValue(5)  # Balanced treble
+
+        elif age_group == "40-60":
+            self.volume_slider.setValue(65)  # Slightly lower volume
+            self.bass_slider.setValue(3)  # Reduced bass for clarity
+            self.treble_slider.setValue(7)  # More treble for better high-frequency clarity
+
+        # Re-process the audio based on new settings
+        self.update_bass_and_treble()
+
+    def update_bass_and_treble(self):
+        if self.current_file_path:
+            self.processed_audio = self.process_audio(self.current_file_path, self.age_combo.currentText())
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+                temp_path = temp_file.name
+                self.temp_files.append(temp_path)
+                self.processed_audio.export(temp_path, format="mp3")
+                self.player.setMedia(QMediaContent(QUrl.fromLocalFile(temp_path)))
+                self.player.setPosition(self.paused_position)
+
+    def process_audio(self, file_path, age_group):
+        # Load the audio
+        song = AudioSegment.from_mp3(file_path)
+
+        # Apply dynamic equalizer settings based on bass/treble sliders
+        processed_audio = self.apply_dynamic_equalizer(song)
+
+        return processed_audio
+
+    def apply_dynamic_equalizer(self, song):
+        # Get the bass and treble values from the sliders
+        bass_adjustment = self.bass_slider.value()
+        treble_adjustment = self.treble_slider.value()
+
+        # Adjust bass and treble (using simple low/high pass filters as a placeholder)
+        if bass_adjustment > 0:
+            song = song.low_pass_filter(200 + bass_adjustment * 50)
+        elif bass_adjustment < 0:
+            song = song.high_pass_filter(200 - bass_adjustment * 50)
+
+        if treble_adjustment > 0:
+            song = song.high_pass_filter(3000 - treble_adjustment * 200)
+        elif treble_adjustment < 0:
+            song = song.low_pass_filter(3000 + treble_adjustment * 200)
+
+        return song
+
+    def update_visualization(self):
+        if self.raw_data is not None:
+            time_data = self.raw_data[:1000]  # Limit data for visualization
+            self.raw_data = np.roll(self.raw_data, -1000)  # Scroll the data
+            self.graphWidget.clear()
+            self.graphWidget.plot(time_data, pen=pg.mkPen('b', width=2))
+
+    def update_progress(self, position):
+        # Update the progress bar to reflect the song position
+        duration = self.player.duration()
+        if duration > 0:
+            progress = (position / duration) * 100
+            self.progress_bar.setValue(int(progress))  # Convert progress to integer
+
+    def handle_state_change(self, state):
+        if state == QMediaPlayer.StoppedState:
+            self.timer.stop()
+            self.paused_position = 0  # Reset the paused position if the song ends
+
+    def closeEvent(self, event):
+        # Clean up temporary files
+        for temp_file in self.temp_files:
+            try:
+                os.remove(temp_file)
+            except OSError as e:
+                print(f"Error cleaning up temporary file: {e}")
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = AudioEnhancerGUI()
+    window.show()
+    sys.exit(app.exec_())
